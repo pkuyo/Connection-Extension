@@ -16,52 +16,15 @@ namespace ConnectionExtension.Helpers
 	//[ModImportName("ConnectionExtension")]
 	//public static class ExtendHelperImport
 	//{
-	//	public static void HookForExitIndex(MethodBase method)
-	//	{
-	//		if (HookForExitIndexWithMethod != null)
-	//			HookForExitIndexWithMethod(method);
-	//	}
 
-	//	public static void HookForExitIndex(Delegate method)
-	//	{
-	//		if (HookForExitIndexWithDelegate != null)
-	//			HookForExitIndexWithDelegate(method);
-	//	}
-
-	//	public static bool TryGetExtension(this World world, out WorldExtension extension)
-	//	{
-	//		extension = null;
-	//		if (TryGetWorldExtension != null)
-	//			return TryGetWorldExtension(world, out extension);
-	//		return false;
-
-	//	}
-
-	//	public static bool TryGetExtension(this AbstractRoom room, out AbstractRoomExtension extension)
-	//	{
-	//		extension = null;
-	//		if (TryGetRoomExtension != null)
-	//			return TryGetRoomExtension(room, out extension);
-	//		return false;
-	//	}
 	//	public static int ExitIndexWithEntrance(this AbstractRoom room, int targetRoom, int fromConnectionIndex)
 	//	{
-	//		if (ExitIndex != null)
+	//		if (ExitIndex != null) //if ConnetionExtension is not enabled, use orignal method instead.
 	//			return ExitIndex(room, targetRoom, fromConnectionIndex);
 	//		return room.ExitIndex(targetRoom);
 	//	}
-	//	public static Action<MethodBase> HookForExitIndexWithMethod;
-
-	//	public static Action<Delegate> HookForExitIndexWithDelegate;
-
-	//	public static TryGetWorldExtensionHandler TryGetWorldExtension;
-
-	//	public static TryGetRoomExtensionHandler TryGetRoomExtension;
 
 	//	public static Func<AbstractRoom, int, int, int> ExitIndex;
 
-	//	public delegate bool TryGetRoomExtensionHandler(AbstractRoom room, out AbstractRoomExtension extender);
-
-	//	public delegate bool TryGetWorldExtensionHandler(World world, out WorldExtension extender);
 	//}
 }
