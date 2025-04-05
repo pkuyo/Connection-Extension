@@ -10,7 +10,7 @@ For usage examples, please refer to the `CTET` (Connection Extension Sample Regi
 
 <h2>Compatibility Instructions</h2>
 
-Add `ExtendHelperImport` (can be found at [ExtendHelperImport](./Helpers/ExtensionImport.cs) ).
+Add `ExtendHelperImport` (can be found at [ExtendHelperImport](./PowerfulConnections/Helpers/ExtensionImport.cs) ).
 
 Call `typeof(ExtendHelperImport).ModInterop();` in your mod's `OnEnable` method. (Requires `using MonoMod.ModInterop` and a reference to `MonoMod.Utils.dll`.)
 
