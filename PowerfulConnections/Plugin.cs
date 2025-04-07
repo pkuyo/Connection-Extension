@@ -17,11 +17,13 @@ using MonoMod.ModInterop;
 
 namespace PowerfulConnections
 {
+
+
 	[BepInPlugin(ModId, Name, Version)]
 	internal class Plugin : BaseUnityPlugin
 	{
 
-		public const string Version = "1.0.0";
+		public const string Version = "1.0.1";
 
 		public const string Name = "Connection Extension";
 

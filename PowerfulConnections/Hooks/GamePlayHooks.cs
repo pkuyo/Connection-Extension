@@ -3,13 +3,16 @@ using Mono.Cecil.Cil;
 using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
 using PowerfulConnections.Helpers;
+using RWCustom;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using UnityEngine;
 
 namespace PowerfulConnections.Hooks
 {
@@ -22,6 +25,7 @@ namespace PowerfulConnections.Hooks
 			On.AbstractRoom.ctor += AbstractRoom_ctor;
 			On.AbstractRoom.ExitIndex += AbstractRoom_ExitIndex;
 			On.RWCustom.Custom.BetweenRoomsDistance += Custom_BetweenRoomsDistance;
+			On.PreyTracker.DistanceEstimation += PreyTracker_DistanceEstimation;
 
 			IL.VoidSpawnWorldAI.DirectionFinder.Update += Common_ExitIndexIL;
 			IL.ScavengersWorldAI.WorldFloodFiller.Update += Common_ExitIndexIL;
@@ -29,7 +33,7 @@ namespace PowerfulConnections.Hooks
 			IL.OverseersWorldAI.ShelterFinder.Update += Common_ExitIndexIL;
 			IL.FirecrackerPlant.ScareObject.MakeCreatureLeaveRoom += Common_ExitIndexIL;
 			IL.MoreSlugcats.YeekAI.MakeCreatureLeaveRoom += Common_ExitIndexIL;
-			IL.AbstractCreatureAI.RandomMoveToOtherRoom += Common_ExitIndexIL;
+			IL.AbstractCreatureAI.RandomMoveToOtherRoom += (il) => Common_ExitIndexIL_Impl(il, 25,1);
 			IL.VoidSpawnKeeper.Initiate += Common_ExitIndexIL;
 			IL.Creature.NewTile += Common_ExitIndexIL;
 			IL.ThreatTracker.FleeTo_WorldCoordinate_int_int_bool_bool += Common_ExitIndexIL;
@@ -45,14 +49,117 @@ namespace PowerfulConnections.Hooks
 			IL.DevInterface.MapPage.SaveMapConfig += MapPage_SaveMapConfig;	
 			IL.HUD.RoomTransition.PlayerEnterShortcut += RoomTransition_PlayerEnterShortcut;
 			IL.AbstractCreatureAI.RandomMoveToOtherRoom += AbstractCreatureAI_RandomMoveToOtherRoom;
+			IL.ThreatTracker.ThreatCreature.Update += ThreatCreature_Update;
 
 			On.World.NodeInALeadingToB_AbstractRoom_AbstractRoom += 
 				World_NodeInALeadingToB_AbstractRoom_AbstractRoom;
 			On.World.TotalShortCutLengthBetweenTwoConnectedRooms_AbstractRoom_AbstractRoom += 
-				World_TotalShortCutLengthBetweenTwoConnectedRooms_AbstractRoom_AbstractRoom;	
-			//IL.PreyTracker.DistanceEstimation
-			//IL.FlyAI.FleeFromRainUpdate
-			//IL.ThreatTracker.ThreatCreature.Update
+				World_TotalShortCutLengthBetweenTwoConnectedRooms_AbstractRoom_AbstractRoom;
+			On.FlyAI.FleeFromRainUpdate += FlyAI_FleeFromRainUpdate;
+
+		}
+
+		private static float PreyTracker_DistanceEstimation(On.PreyTracker.orig_DistanceEstimation orig, PreyTracker self, WorldCoordinate from, WorldCoordinate to, CreatureTemplate crit)
+		{
+			NoWarning = true;
+			var re = orig(self, from, to, crit);
+			NoWarning = false;
+
+			var fromRoom = self.AI.creature.world.GetAbstractRoom(from);
+			if (from.room == to.room
+				|| fromRoom.realizedRoom == null
+				|| !fromRoom.realizedRoom.readyForAI
+				|| !fromRoom.TryGetExtension(out var extend)
+				|| !extend.extendIndex.TryGetValue(to.room, out var map)
+				|| map.Count == 0)
+				return re;
+
+			foreach (var i in map)
+			{
+				int creatureSpecificExitIndex = fromRoom.CommonToCreatureSpecificNodeIndex(i.Value, crit);
+				int num = fromRoom.realizedRoom.aimap.ExitDistanceForCreatureAndCheckNeighbours(from.Tile, creatureSpecificExitIndex, crit);
+				if (crit.ConnectionResistance(MovementConnection.MovementType.SkyHighway).Allowed && num > -1 && fromRoom.AnySkyAccess &&
+					self.AI.creature.world.GetAbstractRoom(to).AnySkyAccess)
+					num = Math.Min(num, 50);
+				
+				if (num > -1)
+					re = Mathf.Min(re,num);
+			}
+
+			return re;
+		}
+
+
+
+		private static float Custom_BetweenRoomsDistance(On.RWCustom.Custom.orig_BetweenRoomsDistance orig, World world, WorldCoordinate a, WorldCoordinate b)
+		{
+			NoWarning = true;
+			var re = orig(world, a, b);
+
+			var roomA = world.GetAbstractRoom(a);
+			var roomB = world.GetAbstractRoom(b);
+			if(a.room == b.room || roomA.ExitIndex(b.room) < 0 || roomB.ExitIndex(a.room) < 0 || 
+				(roomA.realizedRoom == null && roomB.realizedRoom == null) ||
+				!roomA.TryGetExtension(out var extend) ||
+				!extend.extendIndex.TryGetValue(roomB.index, out var map))
+				return re;
+
+			float num = world.GetAbstractRoom(a).size.ToVector2().magnitude;
+			float num2 = world.GetAbstractRoom(b).size.ToVector2().magnitude;
+
+			foreach(var i in map)
+			{
+				if (roomA.realizedRoom != null && roomA.realizedRoom.shortCutsReady)
+					num = Mathf.Min(num, a.Tile.FloatDist(roomA.realizedRoom.LocalCoordinateOfNode(i.Value).Tile));
+				
+				if (roomB.realizedRoom != null && roomB.realizedRoom.shortCutsReady)
+					num2 = Mathf.Min(num2, b.Tile.FloatDist(roomB.realizedRoom.LocalCoordinateOfNode(i.Key).Tile));
+				
+			}
+			NoWarning = false;
+
+			return num + num2;
+
+		}
+
+		private static void ThreatCreature_Update(ILContext il)
+		{
+			ILCursor c = new(il);
+			c.EmitDelegate(() =>
+			{
+				NoWarning = true;
+			});
+			int index = 0;
+			c.GotoNext(MoveType.After,
+				i => i.MatchLdloc(out index),
+				i => i.MatchLdcI4(-1),
+				i => i.MatchBle(out _));
+
+			c.Emit(OpCodes.Ldarg_0);
+			c.Emit(OpCodes.Ldloc, index);
+			c.EmitDelegate((ThreatTracker.ThreatCreature self, int index) =>
+			{
+				NoWarning = false;
+				if (!self.owner.AI.creature.Room.TryGetExtension(out var extend) ||
+					!extend.extendIndex.TryGetValue(self.creature.BestGuessForPosition().room, out var map) ||
+					map.Count == 0)
+					return index;
+
+				float minDist = float.MaxValue;
+				var crit = self.owner.AI.creature;
+				foreach (var i in map.Values)
+				{
+					if(Custom.DistLess(crit.Room.realizedRoom.ShortcutLeadingToNode(i).startCoord,crit.pos, minDist))
+					{
+						minDist = Custom.Dist(crit.Room.realizedRoom.ShortcutLeadingToNode(i).startCoord.Tile.ToVector2(), 
+							crit.pos.Tile.ToVector2());
+						index = i;
+					}
+				}
+				return index;
+
+			});
+			c.Emit(OpCodes.Stloc, index);
 		}
 
 		public static bool NoWarning { get; private set; } = false;
@@ -73,6 +180,13 @@ namespace PowerfulConnections.Hooks
 			NoWarning = false;
 			return re;
 		}
+		private static void FlyAI_FleeFromRainUpdate(On.FlyAI.orig_FleeFromRainUpdate orig, FlyAI self)
+		{
+			NoWarning = true;
+			orig(self);
+			NoWarning = false;
+		}
+
 
 		private static void AbstractCreatureAI_RandomMoveToOtherRoom(ILContext il)
 		{
@@ -166,22 +280,19 @@ namespace PowerfulConnections.Hooks
 
 		}
 
-		private static float Custom_BetweenRoomsDistance(On.RWCustom.Custom.orig_BetweenRoomsDistance orig, World world, WorldCoordinate a, WorldCoordinate b)
-		{
-			return orig(world, a, b);
-		}
+
 
 		public static void Common_ExitIndexIL(ILContext il)
 		{
 			Common_ExitIndexIL_Impl(il, 25);
 		}
-		public static void Common_ExitIndexIL_Impl(ILContext il, int maxCount = 25)
+		public static void Common_ExitIndexIL_Impl(ILContext il, int maxCount = 25, int times = -1)
 		{
 			ILCursor c = new ILCursor(il);
 			var roomIndex = new VariableDefinition(il.Body.Method.Module.TypeSystem.Int32);
 			il.Body.Variables.Add(roomIndex);
 
-			while (c.TryGotoNext(MoveType.Before,
+			while (times != 0 && c.TryGotoNext(MoveType.Before,
 				i => i.MatchCallOrCallvirt<AbstractRoom>("ExitIndex")))
 			{
 				c.GotoPrev(MoveType.After, _ => true);
@@ -240,6 +351,7 @@ namespace PowerfulConnections.Hooks
 					preIndex++;
 				}
 				c.GotoNext(MoveType.After, i => i.MatchCallOrCallvirt<AbstractRoom>("ExitIndex"));
+				times--;
 
 				if (!isSuccess)
 					Plugin.LogWarning($"Failed to find connection index in ExitIndex: {il.Method.FullName}, No Ldfld AbstractRoom::connections");
@@ -328,7 +440,7 @@ namespace PowerfulConnections.Hooks
 		}
 		private int fromConnectionIndex = -1;
 
-		// TargetRoomIndex, TargetConnectionIndex, ToConnectionIndex
+		// TargetRoomIndex, TargetConnectionIndex, ToConnectionIndex(self room)
 		public Dictionary<int, Dictionary<int,int>> extendIndex;
 	}
 
