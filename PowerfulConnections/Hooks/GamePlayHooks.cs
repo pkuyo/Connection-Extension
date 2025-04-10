@@ -394,13 +394,12 @@ namespace PowerfulConnections.Hooks
 	{
 		public void Init()
 		{
-			if (!ownerRef.TryGetTarget(out var self) || GamePlayHooks.NoWarning)
+			if (!ownerRef.TryGetTarget(out var self))
 				return;
 			extendIndex = self.world.TryGetExtension(out var worldExtender) && 
 				worldExtender.extendIndex.TryGetValue(self.index, out var map) ?
 				map.ToDictionary(i => i.Key, i => i.Value) :
 				new();
-
 			//if (extendIndex.Count != 0)
 			//{
 			//	Plugin.LogDebug(self.name);
@@ -423,7 +422,15 @@ namespace PowerfulConnections.Hooks
 		{
 			if (!ownerRef.TryGetTarget(out var self) || GamePlayHooks.NoWarning)
 				return;
-			
+
+			if (extendIndex == null)
+			{
+				StackTrace stackTrace = new StackTrace();
+				Plugin.LogWarning($"AbstractRoom::ExitIndex, Room:{self.name}, target room:{self.world.GetAbstractRoom(targetRoom).name} , Null extend index");
+				Plugin.LogDebug(stackTrace);
+				return;
+			}
+		
 			if (fromConnectionIndex == -1)
 			{
 				StackTrace stackTrace = new StackTrace();

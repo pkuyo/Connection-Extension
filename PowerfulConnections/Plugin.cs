@@ -23,7 +23,7 @@ namespace PowerfulConnections
 	internal class Plugin : BaseUnityPlugin
 	{
 
-		public const string Version = "1.0.1";
+		public const string Version = "1.0.2";
 
 		public const string Name = "Connection Extension";
 

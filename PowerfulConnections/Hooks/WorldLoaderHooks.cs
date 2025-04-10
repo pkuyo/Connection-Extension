@@ -50,9 +50,9 @@ namespace PowerfulConnections.Hooks
 			RainWorldGame game, SlugcatStats.Name playerCharacter, SlugcatStats.Timeline timelinePosition, bool singleRoomWorld,
 			string worldName, Region region, RainWorldGame.SetupValues setupValues)
 		{
-			orig(self,game, playerCharacter, timelinePosition, singleRoomWorld, worldName, region, setupValues);
-			if(!loaderExtensions.TryGetValue(self, out var module))
+			if (!loaderExtensions.TryGetValue(self, out var module))
 				loaderExtensions.Add(self, new WorldLoaderExtension(self));
+			orig(self,game, playerCharacter, timelinePosition, singleRoomWorld, worldName, region, setupValues);
 		}
 
 		
@@ -64,8 +64,10 @@ namespace PowerfulConnections.Hooks
 	{
 		public void CreatingWorld()
 		{
+			
 			if (!ownerRef.TryGetTarget(out var self) || !self.world.TryGetExtension(out var extender))
 				return;
+			Plugin.Log("In Creating World extension indexs");
 
 			extender.extendIndex = extendIndex.ToDictionary(
 				i => self.world.GetAbstractRoom(i.Key).index,
