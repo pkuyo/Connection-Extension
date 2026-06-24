@@ -1,7 +1,9 @@
-﻿using Mono.Cecil;
+using Mono.Cecil;
 using Mono.Cecil.Cil;
 using MonoMod.Cil;
 using MonoMod.RuntimeDetour;
+using MonoWeaver.Cecil;
+using MonoWeaver.Patterns;
 using PowerfulConnections.Helpers;
 using RWCustom;
 using System;
@@ -33,22 +35,22 @@ namespace PowerfulConnections.Hooks
 			IL.OverseersWorldAI.ShelterFinder.Update += Common_ExitIndexIL;
 			IL.FirecrackerPlant.ScareObject.MakeCreatureLeaveRoom += Common_ExitIndexIL;
 			IL.MoreSlugcats.YeekAI.MakeCreatureLeaveRoom += Common_ExitIndexIL;
-			IL.AbstractCreatureAI.RandomMoveToOtherRoom += (il) => Common_ExitIndexIL_Impl(il, 25,1);
+			IL.AbstractCreatureAI.RandomMoveToOtherRoom += Common_ExitIndexIL;
 			IL.VoidSpawnKeeper.Initiate += Common_ExitIndexIL;
 			IL.Creature.NewTile += Common_ExitIndexIL;
 			IL.ThreatTracker.FleeTo_WorldCoordinate_int_int_bool_bool += Common_ExitIndexIL;
 			IL.PathFinder.ConnectAITile += Common_ExitIndexIL;
-			IL.PathFinder.ConnectionsOfAbstractNodeInRealizedRoom += (il) => Common_ExitIndexIL_Impl(il,75);
+			IL.PathFinder.ConnectionsOfAbstractNodeInRealizedRoom += Common_ExitIndexIL;
 			IL.PathFinder.DestinationExit += Common_ExitIndexIL;
 			IL.AbstractSpacePathFinder.Path += Common_ExitIndexIL;
 			IL.AbstractSpaceNodeFinder.Update += Common_ExitIndexIL;
 		    IL.Tracker.Ghost.Update += Common_ExitIndexIL;
 			IL.MissionTracker.LeaveRoom.Act += Common_ExitIndexIL;
 			IL.ShortcutHandler.Update += Common_ExitIndexIL;
+            IL.HUD.RoomTransition.PlayerEnterShortcut += Common_ExitIndexIL;
+			IL.DevInterface.MapPage.SaveMapConfig += Common_ExitIndexIL;	
+			IL.AbstractCreatureAI.RandomMoveToOtherRoom += Common_ExitIndexIL;
 
-			IL.DevInterface.MapPage.SaveMapConfig += MapPage_SaveMapConfig;	
-			IL.HUD.RoomTransition.PlayerEnterShortcut += RoomTransition_PlayerEnterShortcut;
-			IL.AbstractCreatureAI.RandomMoveToOtherRoom += AbstractCreatureAI_RandomMoveToOtherRoom;
 			IL.ThreatTracker.ThreatCreature.Update += ThreatCreature_Update;
 
 			On.World.NodeInALeadingToB_AbstractRoom_AbstractRoom += 
@@ -130,6 +132,30 @@ namespace PowerfulConnections.Hooks
 				NoWarning = true;
 			});
 			int index = 0;
+			var match = c.Method.Match(Cil.Value(() => P.Local<int>("exitDen") > -1)).Single();
+			match.AfterUse().Transform((ThreatTracker.ThreatCreature self, int index) =>
+			{
+				NoWarning = false;
+				if (!self.owner.AI.creature.Room.TryGetExtension(out var extend) ||
+					!extend.extendIndex.TryGetValue(self.creature.BestGuessForPosition().room, out var map) ||
+					map.Count == 0)
+					return index;
+
+				float minDist = float.MaxValue;
+				var crit = self.owner.AI.creature;
+				foreach (var i in map.Values)
+				{
+					if (Custom.DistLess(crit.Room.realizedRoom.ShortcutLeadingToNode(i).startCoord, crit.pos, minDist))
+					{
+						minDist = Custom.Dist(crit.Room.realizedRoom.ShortcutLeadingToNode(i).startCoord.Tile.ToVector2(),
+							crit.pos.Tile.ToVector2());
+						index = i;
+					}
+				}
+				return index;
+
+			}, config => config.Capture(match.Value("exitDen"))).StoreLocal(match.Value("exitDen"));
+
 			c.GotoNext(MoveType.After,
 				i => i.MatchLdloc(out index),
 				i => i.MatchLdcI4(-1),
@@ -188,175 +214,34 @@ namespace PowerfulConnections.Hooks
 		}
 
 
-		private static void AbstractCreatureAI_RandomMoveToOtherRoom(ILContext il)
-		{
-			var roomIndex = new VariableDefinition(il.Body.Method.Module.TypeSystem.Int32);
-			il.Body.Variables.Add(roomIndex);
-
-
-			int index = -1;
-			{
-				ILCursor c = new(il);
-				c.GotoNext(MoveType.Before,
-					i => i.MatchLdloc(out index),
-					i => i.MatchLdfld<WorldCoordinate>("room"),
-					i => i.MatchCallvirt<AbstractRoom>("ExitIndex"));
-			}
-
-			ILCursor c2 = new(il);
-			c2.GotoNext(MoveType.After,i => i.MatchCallvirt<AbstractRoom>("ExitIndex"));
-			while(c2.TryGotoNext(i => i.MatchCallvirt<AbstractRoom>("ExitIndex")))
-			{
-				c2.GotoPrev(MoveType.After, _ => true);
-				c2.Emit(OpCodes.Stloc, roomIndex);
-				c2.Emit(OpCodes.Dup);
-				c2.Emit(OpCodes.Ldloc, index);
-				c2.EmitDelegate((AbstractRoom self, WorldCoordinate targetRoom) =>
-				{
-					if (self.TryGetExtension(out var extender))
-						extender.SetFromConnectionIndex(targetRoom.abstractNode);
-				});
-				c2.Emit(OpCodes.Ldloc, roomIndex);
-				c2.GotoNext(MoveType.After, i => i.MatchCallOrCallvirt<AbstractRoom>("ExitIndex"));
-
-			}
-			//foreach (var i in il.Instrs)
-			//	i.DebugPrint();
-		}
-
-		private static void MapPage_SaveMapConfig(ILContext il)
-		{
-			ILCursor c = new(il);
-			var roomIndex = new VariableDefinition(il.Body.Method.Module.TypeSystem.Int32);
-			il.Body.Variables.Add(roomIndex);
-			int index = -1;
-
-			c.GotoNext(MoveType.After,
-				i => i.MatchLdfld<DevInterface.RoomPanel>("roomRep"),
-				i => i.MatchLdfld<DevInterface.MapObject.RoomRepresentation>("room"),
-				i => i.MatchLdfld<AbstractRoom>("connections"),
-				i => i.MatchLdloc(out index));
-
-			c.GotoNext(MoveType.Before, i => i.MatchCallvirt<AbstractRoom>("ExitIndex"));
-			c.Emit(OpCodes.Stloc, roomIndex);
-			c.Emit(OpCodes.Dup);
-			c.Emit(OpCodes.Ldloc, index);
-			c.EmitDelegate((AbstractRoom self, int targetRoom) =>
-			{
-				if (self.TryGetExtension(out var extender))
-					extender.SetFromConnectionIndex(targetRoom);
-			});
-			c.Emit(OpCodes.Ldloc, roomIndex);
-
-		}
-
-		private static void RoomTransition_PlayerEnterShortcut(ILContext il)
-		{
-			var local = new VariableDefinition(il.Body.Method.Module.TypeSystem.Int32);
-			var roomIndex = new VariableDefinition(il.Body.Method.Module.TypeSystem.Int32);
-			il.Body.Variables.Add(local);
-			il.Body.Variables.Add(roomIndex);
-
-			ILCursor c = new(il);
-
-			c.Emit(OpCodes.Ldarg_1);
-			c.EmitDelegate((ShortcutData shortcut) => shortcut.destNode);
-			c.Emit(OpCodes.Stloc, local);
-
-			while(c.TryGotoNext(i => i.MatchCallOrCallvirt<AbstractRoom>("ExitIndex")))
-			{
-				c.GotoPrev(MoveType.After, _ => true);
-				c.Emit(OpCodes.Stloc, roomIndex);
-				c.Emit(OpCodes.Dup);
-				c.Emit(OpCodes.Ldloc, local);
-				c.EmitDelegate((AbstractRoom self, int targetRoom) =>
-				{
-					if (self.TryGetExtension(out var extender))
-						extender.SetFromConnectionIndex(targetRoom);
-				});
-				c.Emit(OpCodes.Ldloc, roomIndex);
-				c.GotoNext(MoveType.After, i => i.MatchCallOrCallvirt<AbstractRoom>("ExitIndex"));
-			}
-
-		}
+	
 
 
 
-		public static void Common_ExitIndexIL(ILContext il)
-		{
-			Common_ExitIndexIL_Impl(il, 25);
-		}
-		public static void Common_ExitIndexIL_Impl(ILContext il, int maxCount = 25, int times = -1)
-		{
-			ILCursor c = new ILCursor(il);
-			var roomIndex = new VariableDefinition(il.Body.Method.Module.TypeSystem.Int32);
-			il.Body.Variables.Add(roomIndex);
+        public static void Common_ExitIndexIL(ILContext il)
+        {
+            var matches = il.Method.Match(Cil.Value(() =>
+						P.Mark("connectExpr",
+							P.Any<AbstractRoom>("room").connections[P.Any<int>("index")] 
+					)));
 
-			while (times != 0 && c.TryGotoNext(MoveType.Before,
-				i => i.MatchCallOrCallvirt<AbstractRoom>("ExitIndex")))
-			{
-				c.GotoPrev(MoveType.After, _ => true);
-				Plugin.LogDebug("--------------");
-				Plugin.LogDebug($"Pre Match At: {il.Method.FullName}:{c.Next.Offset}");
-				bool isSuccess = false;
-				Instruction instr = c.Previous;
-				int preIndex = 0;
-				while (instr.Previous != null && preIndex < maxCount)
-				{
+			var count = matches.Count;
+            for (var i = 0; i < count; i++)
+            {
+                var match = matches[i];
 
-					if(instr.MatchLdfld<AbstractRoom>("connections"))
+				match.Value("connectExpr").AfterUse().Transform
+					((AbstractRoom room, int connectionIndex) =>
 					{
-						int tmpStack = 0;
-						var end = instr = instr.Next;
-					
-						while (!end.MatchLdelemI4())
-						{
-							if (end.Next == null || end.IsBranchInstruction())
-							{
-								if (end.Next == null) Plugin.LogWarning($"Failed to build ExitIndex: {il.Method.FullName}, Can't find LdelemI4");
-								else Plugin.LogWarning($"Failed to build ExitIndex: {il.Method.FullName}, found Branch");
-								tmpStack = -1;
-								break;
-							}
-							end.ComputeStackDelta(ref tmpStack);
-							end = end.Next;
-							
-						}
+						if (room.TryGetExtension(out var extender))
+							extender.SetFromConnectionIndex(connectionIndex);
+					},
+                    args => args
+                        .Capture(match.Value("room"))
+                        .Capture(match.Value("index")));
+            }
+        }
 
-						if (tmpStack != 1)
-						{
-							Plugin.LogWarning($"Failed to build ExitIndex: {il.Method.FullName}, Stack overflow");
-							for (var i = instr; i != end; i = i.Next)
-								Plugin.LogDebug(i);
-						}
-						else
-						{
-							Plugin.LogDebug($"Match At: {il.Method.FullName}:{end.Next.Offset}");
-							c.Emit(OpCodes.Stloc, roomIndex);
-							c.Emit(OpCodes.Dup);
-							for (var i = instr; i != end; i = i.Next)
-								c.Emit(i.OpCode, i.Operand);
-							c.EmitDelegate((AbstractRoom self, int targetRoom) =>
-							{
-								if (self.TryGetExtension(out var extender))
-									extender.SetFromConnectionIndex(targetRoom);
-							});
-							c.Emit(OpCodes.Ldloc, roomIndex);
-							Plugin.LogDebug($"Finish Emit");
-							isSuccess = true;
-						}
-						break;
-					}
-					instr = instr.Previous;
-					preIndex++;
-				}
-				c.GotoNext(MoveType.After, i => i.MatchCallOrCallvirt<AbstractRoom>("ExitIndex"));
-				times--;
-
-				if (!isSuccess)
-					Plugin.LogWarning($"Failed to find connection index in ExitIndex: {il.Method.FullName}, No Ldfld AbstractRoom::connections");
-			}
-		}
 
 
 

@@ -19,7 +19,7 @@ namespace PowerfulConnections
 {
 
 
-	[BepInPlugin(ModId, Name, Version)]
+	[	BepInPlugin(ModId, Name, Version)]
 	internal class Plugin : BaseUnityPlugin
 	{
 
