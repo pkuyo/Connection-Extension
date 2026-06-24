@@ -13,6 +13,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using UnityEngine;
 
@@ -131,9 +132,9 @@ namespace PowerfulConnections.Hooks
 			{
 				NoWarning = true;
 			});
-			int index = 0;
-			var match = c.Method.Match(Cil.Value(() => P.Local<int>("exitDen") > -1)).Single();
-			match.AfterUse().Transform((ThreatTracker.ThreatCreature self, int index) =>
+
+			var match = c.Method.Match(Cil.Condition(() => P.Local<int>("exitDen") > -1)).Single();
+			match.Condition().Observe((bool _, ThreatTracker.ThreatCreature self, int index) =>
 			{
 				NoWarning = false;
 				if (!self.owner.AI.creature.Room.TryGetExtension(out var extend) ||
@@ -154,39 +155,10 @@ namespace PowerfulConnections.Hooks
 				}
 				return index;
 
-			}, config => config.Capture(match.Value("exitDen"))).StoreLocal(match.Value("exitDen"));
+			}, config => config.Arg(0).Capture(match.Value("exitDen"))).Store(match.Value("exitDen")).Apply();
 
-			c.GotoNext(MoveType.After,
-				i => i.MatchLdloc(out index),
-				i => i.MatchLdcI4(-1),
-				i => i.MatchBle(out _));
 
-			c.Emit(OpCodes.Ldarg_0);
-			c.Emit(OpCodes.Ldloc, index);
-			c.EmitDelegate((ThreatTracker.ThreatCreature self, int index) =>
-			{
-				NoWarning = false;
-				if (!self.owner.AI.creature.Room.TryGetExtension(out var extend) ||
-					!extend.extendIndex.TryGetValue(self.creature.BestGuessForPosition().room, out var map) ||
-					map.Count == 0)
-					return index;
-
-				float minDist = float.MaxValue;
-				var crit = self.owner.AI.creature;
-				foreach (var i in map.Values)
-				{
-					if(Custom.DistLess(crit.Room.realizedRoom.ShortcutLeadingToNode(i).startCoord,crit.pos, minDist))
-					{
-						minDist = Custom.Dist(crit.Room.realizedRoom.ShortcutLeadingToNode(i).startCoord.Tile.ToVector2(), 
-							crit.pos.Tile.ToVector2());
-						index = i;
-					}
-				}
-				return index;
-
-			});
-			c.Emit(OpCodes.Stloc, index);
-		}
+        }
 
 		public static bool NoWarning { get; private set; } = false;
 
@@ -220,29 +192,75 @@ namespace PowerfulConnections.Hooks
 
         public static void Common_ExitIndexIL(ILContext il)
         {
-            var matches = il.Method.Match(Cil.Value(() =>
-						P.Mark("connectExpr",
-							P.Any<AbstractRoom>("room").connections[P.Any<int>("index")] 
-					)));
+			var model = il.Method.For();
 
-			var count = matches.Count;
-            for (var i = 0; i < count; i++)
+            var connectMatches = model.Find(Cil.Value(
+				() => P.Any<AbstractRoom>("room").connections[P.Any<int>("index")] )).GroupBy(i => i.LastInstruction.Offset).Select(i => i.First()).ToList();
+
+			var exitMatches = model.Find(Cil.Value(
+				() => P.Any<AbstractRoom>("room").ExitIndex(P.Any<int>("index")))).GroupBy(i => i.LastInstruction.Offset).Select(i => i.First()).ToList();
+
+            if (connectMatches.Count == 0 || exitMatches.Count == 0)
             {
-                var match = matches[i];
+				Plugin.LogWarning($"can't find patterns, connection:{connectMatches.Count}, exit:{exitMatches.Count}");
+				return;
+			}
+ 
+            var connectIndex = 0;
+			Dictionary<CilMatch, int> markedMatches = new Dictionary<CilMatch, int>(exitMatches.Count);
 
-				match.Value("connectExpr").AfterUse().Transform
-					((AbstractRoom room, int connectionIndex) =>
+            for (var i = 0; i < exitMatches.Count; i++)
+            {
+				while(connectIndex <= connectMatches.Count)
+				{
+					if (connectIndex == connectMatches.Count || connectMatches[connectIndex].LastInstruction.Offset > exitMatches[i].LastInstruction.Offset)
 					{
-						if (room.TryGetExtension(out var extender))
-							extender.SetFromConnectionIndex(connectionIndex);
-					},
-                    args => args
-                        .Capture(match.Value("room"))
-                        .Capture(match.Value("index")));
+						if (connectIndex == 0)
+							break;
+						var connectMatch = connectMatches[connectIndex - 1];
+						if (markedMatches.TryGetValue(connectMatch, out var value)) markedMatches[connectMatch] = value + 1;
+						else markedMatches[connectMatch] = 1;
+						break;
+                    }
+                    connectIndex++;
+
+                }
             }
+			
+			if (markedMatches.Count == 0)
+			{
+                Plugin.LogWarning($"'{il.Method.FullName}' can't find marked matched patterns. {exitMatches.Count}, {connectMatches.Count}");
+                return;
+            }
+
+			foreach (var pair in markedMatches)
+			{
+				pair.Key.Value().AfterUse().Observe
+				(static (int _ , AbstractRoom room, int connectionIndex, int count) =>
+				{
+                    if (room.world.GetAbstractRoom(room.connections[connectionIndex]).TryGetExtension(out var extender))
+					   extender.SetFromConnectionIndex(connectionIndex, count);
+				},
+				args => args
+					.Capture(pair.Key.Value("room"))
+					.Capture(pair.Key.Value("index"))
+					.Constant(pair.Value)).Apply();
+            }
+
+			/*
+			foreach(var i in il.Instrs)
+			{
+				try
+				{
+					Plugin.LogWarning(i);
+				}
+				catch
+				{
+					Plugin.LogWarning(i.OpCode);
+				}
+			}
+			*/
         }
-
-
 
 
 		private static int AbstractRoom_ExitIndex(On.AbstractRoom.orig_ExitIndex orig, AbstractRoom self, int targetRoom)
@@ -298,10 +316,12 @@ namespace PowerfulConnections.Hooks
 		}
 
 
-		public void SetFromConnectionIndex(int fromConnectionIndex)
+		public void SetFromConnectionIndex(int fromConnectionIndex, int useCount)
 		{
 			this.fromConnectionIndex = fromConnectionIndex;
-		}
+			this.useCount = useCount;
+
+        }
 
 		public void ExitIndex(int targetRoom, ref int result)
 		{
@@ -312,7 +332,7 @@ namespace PowerfulConnections.Hooks
 			{
 				StackTrace stackTrace = new StackTrace();
 				Plugin.LogWarning($"AbstractRoom::ExitIndex, Room:{self.name}, target room:{self.world.GetAbstractRoom(targetRoom).name} , Null extend index");
-				Plugin.LogDebug(stackTrace);
+				Plugin.LogWarning(stackTrace);
 				return;
 			}
 		
@@ -320,17 +340,25 @@ namespace PowerfulConnections.Hooks
 			{
 				StackTrace stackTrace = new StackTrace();
 				Plugin.LogWarning($"AbstractRoom::ExitIndex, Room:{self.name}, target room:{self.world.GetAbstractRoom(targetRoom).name}");
-				Plugin.LogDebug(stackTrace.GetFrame(3));
+				Plugin.LogWarning(stackTrace.GetFrame(3));
 			}
 			if (extendIndex.TryGetValue(targetRoom, out var map) && map.TryGetValue(fromConnectionIndex, out var index))
 			{
 				result = index;
-				Plugin.LogDebug($"{self.world.GetAbstractRoom(targetRoom).name}:{fromConnectionIndex}->{self.name}:{result}");
+				Plugin.LogWarning($"{self.world.GetAbstractRoom(targetRoom).name}:{fromConnectionIndex}->{self.name}:{result}");
 
 			}
-			fromConnectionIndex = -1;
+			useCount--;
+
+            if (useCount < 0)
+			{
+                fromConnectionIndex = -1;
+				useCount = 0;
+            }
+	
 		}
 		private int fromConnectionIndex = -1;
+		private int useCount = 0;
 
 		// TargetRoomIndex, TargetConnectionIndex, ToConnectionIndex(self room)
 		public Dictionary<int, Dictionary<int,int>> extendIndex;
@@ -338,7 +366,6 @@ namespace PowerfulConnections.Hooks
 
 	public class WorldExtension(World owner) : Extension<World>(owner)
 	{
-
 		public Dictionary<int, Dictionary<int, Dictionary<int, int>>> extendIndex = new();
 
 	}

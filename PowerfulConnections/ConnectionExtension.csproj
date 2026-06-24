@@ -7,37 +7,46 @@
 
   <ItemGroup>
     <Reference Include="BepInEx">
-      <HintPath>..\..\..\not\Plague-Walker\include\BepInEx.dll</HintPath>
+      <HintPath>..\include\BepInEx.dll</HintPath>
     </Reference>
     <Reference Include="HOOKS-Assembly-CSharp">
-      <HintPath>..\..\..\not\Plague-Walker\include\HOOKS-Assembly-CSharp.dll</HintPath>
+      <HintPath>..\include\HOOKS-Assembly-CSharp.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Cecil">
-      <HintPath>..\..\..\not\Plague-Walker\include\Mono.Cecil.dll</HintPath>
+      <HintPath>..\include\Mono.Cecil.dll</HintPath>
+    </Reference>
+    <Reference Include="Mono.Cecil.Mdb">
+      <HintPath>..\include\Mono.Cecil.Mdb.dll</HintPath>
+    </Reference>
+    <Reference Include="Mono.Cecil.Pdb">
+      <HintPath>..\include\Mono.Cecil.Pdb.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Cecil.Rocks">
-      <HintPath>..\..\..\not\Plague-Walker\include\Mono.Cecil.Rocks.dll</HintPath>
+      <HintPath>..\include\Mono.Cecil.Rocks.dll</HintPath>
     </Reference>
     <Reference Include="MonoMod">
-      <HintPath>..\..\..\not\Plague-Walker\include\MonoMod.dll</HintPath>
+      <HintPath>..\include\MonoMod.dll</HintPath>
     </Reference>
     <Reference Include="MonoMod.RuntimeDetour">
-      <HintPath>..\..\..\not\Plague-Walker\include\MonoMod.RuntimeDetour.dll</HintPath>
+      <HintPath>..\include\MonoMod.RuntimeDetour.dll</HintPath>
     </Reference>
     <Reference Include="MonoMod.Utils">
-      <HintPath>..\..\..\not\Plague-Walker\include\MonoMod.Utils.dll</HintPath>
+      <HintPath>..\include\MonoMod.Utils.dll</HintPath>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>..\..\..\not\Plague-Walker\include\PUBLIC-Assembly-CSharp-Original.dll</HintPath>
+      <HintPath>..\include\PUBLIC-Assembly-CSharp.dll</HintPath>
     </Reference>
     <Reference Include="MonoWeaver">
-      <HintPath>..\..\MonoWeaver\MonoWeaver\bin\Debug\net48\MonoWeaver.dll</HintPath>
+      <HintPath>..\include\MonoWeaver.dll</HintPath>
+    </Reference>
+    <Reference Include="Unity.Mathematics">
+      <HintPath>..\include\Unity.Mathematics.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine">
-      <HintPath>..\..\..\not\Plague-Walker\include\UnityEngine.dll</HintPath>
+      <HintPath>..\include\UnityEngine.dll</HintPath>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\..\..\not\Plague-Walker\include\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>..\include\UnityEngine.CoreModule.dll</HintPath>
     </Reference>
   </ItemGroup>
 

@@ -1,15 +1,20 @@
 ﻿
 using BepInEx;
+using ConnectionExtension;
+using Mono.Cecil;
+using MonoMod.ModInterop;
+using MonoMod.RuntimeDetour;
+using MonoMod.Utils;
+using PowerfulConnections.Helpers;
+using PowerfulConnections.Hooks;
+using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
-using System;
+using System.Reflection;
 using System.Security.Permissions;
 using UnityEngine;
-using PowerfulConnections.Hooks;
-using System.Collections.Concurrent;
-using ConnectionExtension;
-using PowerfulConnections.Helpers;
-using MonoMod.ModInterop;
+using SecurityAction = System.Security.Permissions.SecurityAction;
 
 #pragma warning disable CS0618
 [assembly: SecurityPermission(SecurityAction.RequestMinimum, SkipVerification = true)]
@@ -23,7 +28,7 @@ namespace PowerfulConnections
 	internal class Plugin : BaseUnityPlugin
 	{
 
-		public const string Version = "1.0.2";
+		public const string Version = "1.1.0";
 
 		public const string Name = "Connection Extension";
 
@@ -33,7 +38,7 @@ namespace PowerfulConnections
 			On.RainWorld.OnModsInit += RainWorld_OnModsInit; 
 			typeof(ExtendHelperExport).ModInterop();
 			instance = this;
-		}
+        }
 
 		public static Option option;
 

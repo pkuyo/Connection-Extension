@@ -16,10 +16,10 @@ namespace PowerfulConnections.Helpers
 	public static class ExtendHelperExport
 	{
 
-		public static int ExitIndex(AbstractRoom room, int targetRoom, int fromConnectionIndex)
+		public static int ExitIndex(AbstractRoom room, int targetRoom, int fromConnectionIndex, int useCount = 1)
 		{
 			if(room.TryGetExtension(out var module))
-				module.SetFromConnectionIndex(fromConnectionIndex);
+				module.SetFromConnectionIndex(fromConnectionIndex, useCount);
 			return room.ExitIndex(targetRoom);
 		}
 
