@@ -145,7 +145,7 @@ namespace PowerfulConnections.Hooks
 			});
 
 			var match = c.Method.Match(Cil.Condition(() => P.Local<int>("exitDen") > -1)).Single();
-			match.Condition().Observe((bool _, ThreatTracker.ThreatCreature self, int index) =>
+			match.Observe((bool _, ThreatTracker.ThreatCreature self, int index) =>
 			{
 				NoWarning = false;
 				if (!self.owner.AI.creature.Room.TryGetExtension(out var extend) ||
@@ -166,7 +166,7 @@ namespace PowerfulConnections.Hooks
 				}
 				return index;
 
-			}, config => config.Arg(0).Capture(match.Value("exitDen"))).Store(match.Value("exitDen")).Apply();
+			}, config => config.Arg(0).Capture(match.Captures.Value("exitDen"))).Store(match.Captures.Value("exitDen")).Apply();
 
 
         }
@@ -234,16 +234,15 @@ namespace PowerfulConnections.Hooks
 				Plugin.LogWarning($"'{il.Method.FullName}' can't find patterns, connection:{connectMatches.Count}, exit:{exitMatches.Count}");
 				return;
 			}
-			Plugin.LogWarning($"'{il.Method.FullName}' connection:{connectMatches.Count}, exit:{exitMatches.Count}");
 
             var connectIndex = 0;
-			Dictionary<CilMatch, int> markedMatches = new Dictionary<CilMatch, int>(exitMatches.Count);
+			Dictionary<ValueMatch, int> markedMatches = new Dictionary<ValueMatch, int>(exitMatches.Count);
 
             for (var i = 0; i < exitMatches.Count; i++)
             {
 				while(connectIndex <= connectMatches.Count)
 				{
-					if (connectIndex == connectMatches.Count || connectMatches[connectIndex].LastInstruction.Offset > exitMatches[i].LastInstruction.Offset)
+					if (connectIndex == connectMatches.Count || connectMatches[connectIndex].ResultInstruction.Offset > exitMatches[i].ResultInstruction.Offset)
 					{
 						if (connectIndex == 0)
 							break;
@@ -265,31 +264,17 @@ namespace PowerfulConnections.Hooks
 
 			foreach (var pair in markedMatches)
 			{
-				pair.Key.Value().AfterUse().Observe
+				pair.Key.Observe
 				(static (int _ , AbstractRoom room, int connectionIndex, int count) =>
 				{
                     if (room.world.GetAbstractRoom(room.connections[connectionIndex]).TryGetExtension(out var extender))
 					   extender.SetFromConnectionIndex(connectionIndex, count);
 				},
 				args => args
-					.Capture(pair.Key.Value("room"))
-					.Capture(pair.Key.Value("index"))
+					.Capture(pair.Key.Captures.Value("room"))
+					.Capture(pair.Key.Captures.Value("index"))
 					.Constant(pair.Value)).Apply();
             }
-
-			/*
-			foreach(var i in il.Instrs)
-			{
-				try
-				{
-					Plugin.LogWarning(i);
-				}
-				catch
-				{
-					Plugin.LogWarning(i.OpCode);
-				}
-			}
-			*/
         }
 
 
