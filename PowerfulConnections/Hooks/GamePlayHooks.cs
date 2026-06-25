@@ -65,65 +65,76 @@ namespace PowerfulConnections.Hooks
 		private static float PreyTracker_DistanceEstimation(On.PreyTracker.orig_DistanceEstimation orig, PreyTracker self, WorldCoordinate from, WorldCoordinate to, CreatureTemplate crit)
 		{
 			NoWarning = true;
-			var re = orig(self, from, to, crit);
-			NoWarning = false;
-
-			var fromRoom = self.AI.creature.world.GetAbstractRoom(from);
-			if (from.room == to.room
-				|| fromRoom.realizedRoom == null
-				|| !fromRoom.realizedRoom.readyForAI
-				|| !fromRoom.TryGetExtension(out var extend)
-				|| !extend.extendIndex.TryGetValue(to.room, out var map)
-				|| map.Count == 0)
-				return re;
-
-			foreach (var i in map)
+			try
 			{
-				int creatureSpecificExitIndex = fromRoom.CommonToCreatureSpecificNodeIndex(i.Value, crit);
-				int num = fromRoom.realizedRoom.aimap.ExitDistanceForCreatureAndCheckNeighbours(from.Tile, creatureSpecificExitIndex, crit);
-				if (crit.ConnectionResistance(MovementConnection.MovementType.SkyHighway).Allowed && num > -1 && fromRoom.AnySkyAccess &&
-					self.AI.creature.world.GetAbstractRoom(to).AnySkyAccess)
-					num = Math.Min(num, 50);
-				
-				if (num > -1)
-					re = Mathf.Min(re,num);
-			}
+				var re = orig(self, from, to, crit);
+                var fromRoom = self.AI.creature.world.GetAbstractRoom(from);
+                if (from.room == to.room
+                    || fromRoom.realizedRoom == null
+                    || !fromRoom.realizedRoom.readyForAI
+                    || !fromRoom.TryGetExtension(out var extend)
+                    || !extend.extendIndex.TryGetValue(to.room, out var map)
+                    || map.Count == 0)
+                    return re;
 
-			return re;
+                foreach (var i in map)
+                {
+                    int creatureSpecificExitIndex = fromRoom.CommonToCreatureSpecificNodeIndex(i.Value, crit);
+                    int num = fromRoom.realizedRoom.aimap.ExitDistanceForCreatureAndCheckNeighbours(from.Tile, creatureSpecificExitIndex, crit);
+                    if (crit.ConnectionResistance(MovementConnection.MovementType.SkyHighway).Allowed && num > -1 && fromRoom.AnySkyAccess &&
+                        self.AI.creature.world.GetAbstractRoom(to).AnySkyAccess)
+                        num = Math.Min(num, 50);
+
+                    if (num > -1)
+                        re = Mathf.Min(re, num);
+                }
+
+                return re;
+            }
+			finally
+			{
+				NoWarning = false;
+			}
 		}
 
 
 
 		private static float Custom_BetweenRoomsDistance(On.RWCustom.Custom.orig_BetweenRoomsDistance orig, World world, WorldCoordinate a, WorldCoordinate b)
 		{
-			NoWarning = true;
-			var re = orig(world, a, b);
-
-			var roomA = world.GetAbstractRoom(a);
-			var roomB = world.GetAbstractRoom(b);
-			if(a.room == b.room || roomA.ExitIndex(b.room) < 0 || roomB.ExitIndex(a.room) < 0 || 
-				(roomA.realizedRoom == null && roomB.realizedRoom == null) ||
-				!roomA.TryGetExtension(out var extend) ||
-				!extend.extendIndex.TryGetValue(roomB.index, out var map))
-				return re;
-
-			float num = world.GetAbstractRoom(a).size.ToVector2().magnitude;
-			float num2 = world.GetAbstractRoom(b).size.ToVector2().magnitude;
-
-			foreach(var i in map)
+			try
 			{
-				if (roomA.realizedRoom != null && roomA.realizedRoom.shortCutsReady)
-					num = Mathf.Min(num, a.Tile.FloatDist(roomA.realizedRoom.LocalCoordinateOfNode(i.Value).Tile));
-				
-				if (roomB.realizedRoom != null && roomB.realizedRoom.shortCutsReady)
-					num2 = Mathf.Min(num2, b.Tile.FloatDist(roomB.realizedRoom.LocalCoordinateOfNode(i.Key).Tile));
-				
+                NoWarning = true;
+                var re = orig(world, a, b);
+
+				var roomA = world.GetAbstractRoom(a);
+				var roomB = world.GetAbstractRoom(b);
+				if (a.room == b.room || roomA.ExitIndex(b.room) < 0 || roomB.ExitIndex(a.room) < 0 ||
+					(roomA.realizedRoom == null && roomB.realizedRoom == null) ||
+					!roomA.TryGetExtension(out var extend) ||
+					!extend.extendIndex.TryGetValue(roomB.index, out var map))
+					return re;
+
+				float num = world.GetAbstractRoom(a).size.ToVector2().magnitude;
+				float num2 = world.GetAbstractRoom(b).size.ToVector2().magnitude;
+
+				foreach (var i in map)
+				{
+					if (roomA.realizedRoom != null && roomA.realizedRoom.shortCutsReady)
+						num = Mathf.Min(num, a.Tile.FloatDist(roomA.realizedRoom.LocalCoordinateOfNode(i.Value).Tile));
+
+					if (roomB.realizedRoom != null && roomB.realizedRoom.shortCutsReady)
+						num2 = Mathf.Min(num2, b.Tile.FloatDist(roomB.realizedRoom.LocalCoordinateOfNode(i.Key).Tile));
+
+				}
+
+				return num + num2;
 			}
-			NoWarning = false;
+			finally
+			{
+                NoWarning = false;
+            }
 
-			return num + num2;
-
-		}
+        }
 
 		private static void ThreatCreature_Update(ILContext il)
 		{
@@ -165,24 +176,42 @@ namespace PowerfulConnections.Hooks
 		private static int World_TotalShortCutLengthBetweenTwoConnectedRooms_AbstractRoom_AbstractRoom(
 			On.World.orig_TotalShortCutLengthBetweenTwoConnectedRooms_AbstractRoom_AbstractRoom orig, World self, AbstractRoom room1, AbstractRoom room2)
 		{
-			NoWarning = true;
-			var re = orig(self, room1, room2);
-			NoWarning = false;
-			return re;
-		}
+			try
+			{
+				NoWarning = true;
+				var re = orig(self, room1, room2);
+				return re;
+			}
+			finally
+			{
+                NoWarning = false;
+            }
+        }
 
 		private static WorldCoordinate World_NodeInALeadingToB_AbstractRoom_AbstractRoom(On.World.orig_NodeInALeadingToB_AbstractRoom_AbstractRoom orig, World self, AbstractRoom roomA, AbstractRoom roomB)
 		{
-			NoWarning = true;
-			var re = orig(self, roomA, roomB);
-			NoWarning = false;
-			return re;
+			try
+			{
+				NoWarning = true;
+				var re = orig(self, roomA, roomB);
+				return re;
+			}
+			finally
+			{
+                NoWarning = false;
+            }
 		}
 		private static void FlyAI_FleeFromRainUpdate(On.FlyAI.orig_FleeFromRainUpdate orig, FlyAI self)
 		{
-			NoWarning = true;
-			orig(self);
-			NoWarning = false;
+			try
+			{
+				NoWarning = true;
+				orig(self);
+			}
+			finally
+			{
+                NoWarning = false;
+            }
 		}
 
 
@@ -195,17 +224,18 @@ namespace PowerfulConnections.Hooks
 			var model = il.Method.For();
 
             var connectMatches = model.Find(Cil.Value(
-				() => P.Any<AbstractRoom>("room").connections[P.Any<int>("index")] )).GroupBy(i => i.LastInstruction.Offset).Select(i => i.First()).ToList();
+				() => P.Any<AbstractRoom>("room").connections[P.Any<int>("index")] ));
 
 			var exitMatches = model.Find(Cil.Value(
-				() => P.Any<AbstractRoom>("room").ExitIndex(P.Any<int>("index")))).GroupBy(i => i.LastInstruction.Offset).Select(i => i.First()).ToList();
+				() => P.Any<AbstractRoom>("room").ExitIndex(P.Any<int>("index"))));
 
             if (connectMatches.Count == 0 || exitMatches.Count == 0)
             {
-				Plugin.LogWarning($"can't find patterns, connection:{connectMatches.Count}, exit:{exitMatches.Count}");
+				Plugin.LogWarning($"'{il.Method.FullName}' can't find patterns, connection:{connectMatches.Count}, exit:{exitMatches.Count}");
 				return;
 			}
- 
+			Plugin.LogWarning($"'{il.Method.FullName}' connection:{connectMatches.Count}, exit:{exitMatches.Count}");
+
             var connectIndex = 0;
 			Dictionary<CilMatch, int> markedMatches = new Dictionary<CilMatch, int>(exitMatches.Count);
 
